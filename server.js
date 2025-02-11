@@ -211,10 +211,6 @@ app.post("/travel-verify-payment", async (req, res) => {
   }
 });
 
-fetch(`${process.env.REACT_APP_BACKEND_URL}/api/data`)
-  .then(response => response.json())
-  .then(data => console.log(data));
-
 // Start the backend server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

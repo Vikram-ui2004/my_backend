@@ -8,14 +8,23 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const multer = require("multer");
 const path = require("path");
+const OpenAI = require("openai");
+const axios = require("axios");
+
 
 
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: "http://localhost:3000" }));
 app.use(bodyParser.json());
 app.use(express.json());
 app.use("/uploads", express.static("uploads")); // Serve uploaded images
+
+const corsOptions = {
+  origin: process.env.FRONTEND_URL,
+  methods: "GET,POST",
+};
+app.use(cors(corsOptions));
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
@@ -44,6 +53,16 @@ const OrderSchema = new mongoose.Schema({
 
 const Order = mongoose.model("Order", OrderSchema);
 
+// Donation Schema
+const donationSchema = new mongoose.Schema({
+  name: String,
+  email: String,
+  amount: Number,
+  paymentId: String,
+  date: { type: Date, default: Date.now },
+});
+
+const Donation = mongoose.model("Donation", donationSchema);
 // Route to register a new user
 app.post("/signup", async (req, res) => {
   const { email, password } = req.body;
@@ -117,47 +136,40 @@ app.put("/update-profile", async (req, res) => {
     res.status(500).send("Error updating profile: " + error.message);
   }
 });
-// Existing Razorpay routes...
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-// Route to verify server is running
-app.get("/", (req, res) => {
-  res.send("Backend is running successfully!");
-});
-
-// Route to create a payment order
+// Create Order Route
 app.post("/create-order", async (req, res) => {
   try {
-    const options = {
-      amount: req.body.amount * 100, // Amount in paisa (₹1 = 100 paisa)
-      currency: "INR",
-      receipt: `order_rcptid_${Math.floor(Math.random() * 10000)}`,
-      payment_capture: 1,
-    };
+    const { amount } = req.body;
+    const options = { amount: amount * 100, currency: "INR" };
 
     const order = await razorpay.orders.create(options);
     res.json(order);
   } catch (error) {
-    res.status(500).send(error);
+    res.status(500).send("Error creating order");
   }
 });
 
-// Route to verify payment
+// Verify Payment & Save to MongoDB
 app.post("/verify-payment", async (req, res) => {
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+  try {
+    const { razorpay_payment_id, donor } = req.body;
 
-  const generated_signature = crypto
-    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-    .update(razorpay_order_id + "|" + razorpay_payment_id)
-    .digest("hex");
+    const newDonation = new Donation({
+      name: donor.name,
+      email: donor.email,
+      amount: donor.amount,
+      paymentId: razorpay_payment_id,
+    });
 
-  if (generated_signature === razorpay_signature) {
-    res.json({ status: "success", message: "Payment successful" });
-  } else {
-    res.status(400).json({ status: "failure", message: "Payment verification failed" });
+    await newDonation.save();
+    res.json({ success: true, message: "Payment Verified & Saved!" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Payment Verification Failed" });
   }
 });
 
@@ -208,6 +220,37 @@ app.post("/travel-verify-payment", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error verifying payment" });
+  }
+});
+
+app.get("/", (req, res) => {
+  res.send("Backend is running...");
+});
+
+
+// OpenAI API Route
+app.post("/api/ask", async (req, res) => {
+  const { question } = req.body;
+
+  try {
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-3.5-turbo",
+        messages: [{ role: "user", content: question }],
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+      }
+    );
+
+    res.json({ answer: response.data.choices[0].message.content });
+  } catch (error) {
+    console.error("Error calling OpenAI:", error);
+    res.status(500).json({ error: "Failed to fetch response from OpenAI" });
   }
 });
 

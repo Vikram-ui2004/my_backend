@@ -227,33 +227,6 @@ app.get("/", (req, res) => {
   res.send("Backend is running...");
 });
 
-
-// OpenAI API Route
-app.post("/api/ask", async (req, res) => {
-  const { question } = req.body;
-
-  try {
-    const response = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        model: "gpt-3.5-turbo",
-        messages: [{ role: "user", content: question }],
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-      }
-    );
-
-    res.json({ answer: response.data.choices[0].message.content });
-  } catch (error) {
-    console.error("Error calling OpenAI:", error);
-    res.status(500).json({ error: "Failed to fetch response from OpenAI" });
-  }
-});
-
 // Start the backend server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

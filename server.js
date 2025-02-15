@@ -9,7 +9,7 @@ const bcrypt = require("bcryptjs");
 const multer = require("multer");
 const path = require("path");
 const OpenAI = require("openai");
-const axios = require("axios");
+
 
 
 

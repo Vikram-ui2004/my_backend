@@ -8,6 +8,8 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const multer = require("multer");
 const path = require("path");
+const axios = require("axios");
+
 
 
 const app = express();
@@ -17,6 +19,7 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.json());
 app.use("/uploads", express.static("uploads")); // Serve uploaded images
+
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
@@ -55,6 +58,17 @@ const donationSchema = new mongoose.Schema({
 });
 const Donation = mongoose.model("Donation", donationSchema);
 
+// Create the Feedback schema
+const feedbackSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true },
+  message: { type: String, required: true },
+  image: { type: String },  // Store the image path if any
+});
+
+// Create the Feedback model
+const Feedback = mongoose.model('Feedback', feedbackSchema);
+
 // User Authentication Routes
 app.post("/signup", async (req, res) => {
   const { email, password } = req.body;
@@ -82,16 +96,16 @@ app.post("/login", async (req, res) => {
 });
 
 // Profile Picture Upload Configuration
-const storage = multer.diskStorage({
+const storage1 = multer.diskStorage({
   destination: "uploads/",
   filename: (req, file, cb) => {
     cb(null, `${Date.now()}${path.extname(file.originalname)}`);
   },
 });
-const upload = multer({ storage });
+const upload1 = multer({ storage1 });
 
 // Upload Profile Picture
-app.post("/upload", upload.single("profilePic"), (req, res) => {
+app.post("/upload", upload1.single("profilePic"), (req, res) => {
   if (!req.file) return res.status(400).send("❌ No file uploaded");
   res.json({ imageUrl: req.file.path });
 });
@@ -195,7 +209,68 @@ app.get("/", (req, res) => {
 });
 
 
+// Multer setup for handling image uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+      cb(null, 'uploads/');  // Specify the folder for storing images
+  },
+  filename: (req, file, cb) => {
+      cb(null, Date.now() + path.extname(file.originalname));  // Give a unique name
+  }
+});
 
+const upload = multer({ storage });
+
+// POST route to submit feedback
+app.post('/submit-feedback', upload.single('image'), async (req, res) => {
+  try {
+      const { name, email, message } = req.body;
+      const image = req.file ? req.file.path : null; // If an image is uploaded, store the path
+
+      const newFeedback = new Feedback({
+          name,
+          email,
+          message,
+          image,
+      });
+
+      await newFeedback.save();
+      res.status(200).json({ message: 'Feedback submitted successfully' });
+  } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: 'Error submitting feedback' });
+  }
+});
+
+//chatbot
+
+const COHERE_API_KEY = process.env.COHERE_API_KEY; 
+
+app.post("/api/chat", async (req, res) => {
+    const { userMessage } = req.body;
+
+    try {
+        const response = await axios.post(
+            "https://api.cohere.ai/v1/generate",
+            {
+                model: "command",
+                prompt: userMessage,
+                max_tokens: 50,
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${COHERE_API_KEY}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        res.json({ botReply: response.data.generations[0].text.trim() });
+    } catch (error) {
+        console.error("API Error:", error);
+        res.status(500).json({ error: "Something went wrong!" });
+    }
+});
 
 // Start the server
 const PORT = process.env.PORT || 5000;

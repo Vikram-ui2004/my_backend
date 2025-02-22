@@ -265,7 +265,12 @@ app.post("/api/chat", async (req, res) => {
             }
         );
 
-        res.json({ botReply: response.data.generations[0].text.trim() });
+        const generations = response.data.generations || [];
+const fullReply = generations.length > 0 
+    ? generations.map(gen => gen.text.trim()).join("\n\n")  // Ensures better readability
+    : "Sorry, I couldn't generate a response.";  // Fallback message
+
+res.json({ botReply: fullReply });
     } catch (error) {
         console.error("API Error:", error);
         res.status(500).json({ error: "Something went wrong!" });

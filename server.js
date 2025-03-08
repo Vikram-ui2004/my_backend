@@ -9,6 +9,7 @@ const bcrypt = require("bcryptjs");
 const multer = require("multer");
 const path = require("path");
 const axios = require("axios");
+const fs = require('fs');
 
 
 
@@ -18,7 +19,32 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.json());
-app.use("/uploads", express.static("uploads")); // Serve uploaded images
+
+// ✅ Ensure 'uploads' folder exists
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log("✅ 'uploads' folder created!");
+}
+
+// ✅ Multer Storage Setup
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir); // Save files in 'uploads/' directory
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname)); // Unique filename
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 } // Limit file size to 5MB
+});
+
+
+// ✅ Serve Uploaded Images as Static Files
+app.use('/uploads', express.static(uploadDir));
 
 
 // Connect to MongoDB
@@ -102,7 +128,7 @@ const storage1 = multer.diskStorage({
     cb(null, `${Date.now()}${path.extname(file.originalname)}`);
   },
 });
-const upload1 = multer({ storage1 });
+const upload1 = multer({ storage: storage1 });
 
 // Upload Profile Picture
 app.post("/upload", upload1.single("profilePic"), (req, res) => {
@@ -207,38 +233,25 @@ app.post("/travel-verify-payment", async (req, res) => {
 app.get("/", (req, res) => {
   res.send("Backend is running...");
 });
-
-
-// Multer setup for handling image uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-      cb(null, 'uploads/');  // Specify the folder for storing images
-  },
-  filename: (req, file, cb) => {
-      cb(null, Date.now() + path.extname(file.originalname));  // Give a unique name
-  }
-});
-
-const upload = multer({ storage });
-
-// POST route to submit feedback
+// Feedback Submission Route
 app.post('/submit-feedback', upload.single('image'), async (req, res) => {
   try {
-      const { name, email, message } = req.body;
-      const image = req.file ? req.file.path : null; // If an image is uploaded, store the path
+    console.log("📥 Received File:", req.file);
 
-      const newFeedback = new Feedback({
-          name,
-          email,
-          message,
-          image,
-      });
+    const { name, email, message } = req.body;
+    if (!name || !email || !message) {
+      return res.status(400).json({ success: false, message: "❌ All fields are required." });
+    }
 
-      await newFeedback.save();
-      res.status(200).json({ message: 'Feedback submitted successfully' });
-  } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: 'Error submitting feedback' });
+    const imagePath = req.file ? req.file.path : null; // Save uploaded image path
+
+    const newFeedback = new Feedback({ name, email, message, image: imagePath });
+    await newFeedback.save();
+
+    res.status(201).json({ success: true, message: "✅ Feedback submitted successfully!" });
+  } catch (error) {
+    console.error("❌ Error submitting feedback:", error);
+    res.status(500).json({ success: false, message: "❌ Server error while submitting feedback." });
   }
 });
 
